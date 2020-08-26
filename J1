@@ -1,0 +1,302 @@
+
+
+pipeline {
+   agent any
+   environment {
+     PROJECT_ID = '${env.BUILD_ID}'
+     REGION = 'us-east-2'
+     LOCATION = '02222222.dkr.ecr.${REGION}.amazonaws.com'
+     AWS_REPO_NAME = 'hello-world'
+   }
+   stages {
+        stage('Cloning Git') {
+          steps {
+              git "https://github.com/mendelor/phtml.git"
+          }
+        }
+
+        stage('Build image') {
+          steps {
+            script {
+              myapp = docker.build("${LOCATION}/${AWS_REPO_NAME}:${env.BUILD_ID}")
+            }
+          }
+        }
+        stage('Run image') {
+          steps {
+              withAWS(region:'us-east-2',credentials:'demo-ecr-credentials') {
+              sh "aws ecr get-login-password | docker login --username AWS --password-stdin ${LOCATION}/v2/"
+              sh "docker push ${LOCATION}/${AWS_REPO_NAME}:${env.BUILD_ID}"
+          }
+        }
+      }
+    }
+  }
+
+              < DON'T FORGET TO UPDATE CREDENTIALS TO  demo-ecr-credentials >
+               Just add stage for cloudeformation and that's it
+
+https://docs.bitnami.com/tutorials/create-ci-cd-pipeline-jenkins-gke/
+===============================================================================
+2. Changed environment variables to build the images with myapp =
+* Noticed that the myapp.run equal the name (myapp =) in the build
+
+pipeline {
+   agent any
+   environment {
+     PROJECT_ID = '${env.BUILD_ID}'
+     REGION = 'us-east-2'
+     LOCATION = 'aaa'
+     AWS_REPO_NAME = 'latest'
+   }
+   stages {
+        stage('Cloning Git') {
+          steps {
+              git "https://github.com/mendelor/phtml.git"
+          }
+        }
+
+        stage('Build image') {
+          steps {
+            script {
+              myapp = docker.build("${LOCATION}/${AWS_REPO_NAME}:${env.BUILD_ID}")
+            }
+          }
+        }
+
+        stage('Run image') {
+          steps {
+            script {
+              myapp.run("--name pngimage_build_${env.BUILD_NUMBER} -i -t -p 80:80")
+          }
+        }
+      }
+    }
+  }
+================================================================================
+3. Clean all images/continers and build an image from Docker HUB and run it
+
+pipeline {
+   agent any
+
+   stages {
+        stage('Clean') {
+          steps {
+              echo 'Starting the Pipeline'
+              sh 'docker rm -f $(docker ps --all --quiet) || true'
+              sh 'docker rmi -f $(docker images --quiet) || true'
+            }
+        }
+
+        stage('Build') {
+          steps {
+            script {
+              dockerImage  = docker.build("mendel/nodeapp12345")
+            }
+         }
+      }
+
+        stage('Run image') {
+          steps {
+            script {
+              dockerImage.run("--name pngimage_build_${env.BUILD_NUMBER} -i -t -p 80:80")
+          }
+        }
+      }
+    }
+  }
+================================================================================
+4. Push image to Docker Hub and there's when (make it skipped the push process)
+
+
+pipeline {
+   agent any
+
+   stages {
+     stage('Initialize') {
+       steps {
+         echo 'Starting the Pipeline'
+         sh 'docker rm -f $(docker ps --all --quiet) || true'
+         sh 'docker rmi -f $(docker images --quiet) || true'
+      }
+    }
+     stage('Build image') {
+       steps {
+        script {
+         dockerImage  = docker.build("mendelor/nodeapp6698")
+        }
+     }
+  }
+     stage('Run image') {
+       steps {
+        script {
+        dockerImage.run("--name pngimage_build_${env.BUILD_NUMBER} -i -t -p 80:80")
+
+        }
+     }
+  }
+
+     stage('Push image') {
+       when {
+         branch 'master'
+       }
+       steps {
+         script {
+           docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+           dockerImage.push("${env.BUILD_NUMBER}")
+           }
+            echo "Trying to Push Docker Build to DockerHub"
+        }
+      }
+    }
+  }
+}
+
+================================================================================  Template Structure!!!
+https://github.com/jenkinsci/docker
+
+pipeline {
+    agent any
+    environment {
+      Name = 'my-java-app'
+
+    }
+    stages {
+        stage ('Checking java version') {
+            steps {
+                    sh 'java -version'
+            }
+        }
+        stage ('maven version') {
+            steps {
+                    sh 'mvn -version'
+            }
+        }
+        stage ('build app test') {
+            steps {
+                    sh 'mvn clean install -DskipTests=true '
+            }
+        }
+
+        stage ('docker image build')
+        {
+            steps {
+
+                        sh 'mvn dockerfile:build'
+
+                  }
+          }
+    }
+}
+================================================================================
+                  < For Java Spring Application >
+
+
+pipeline {
+   agent any
+   environment {
+     Name = 'my-java-app'
+
+   }
+   stages {
+        stage('Remove images') {
+          steps {
+              echo 'Starting the Pipeline'
+              sh 'docker rm -f $(docker ps --all --quiet) || true'
+              sh 'docker rmi -f $(docker images --quiet) || true'
+            }
+        }
+
+        stage ('Checking java version') {
+            steps {
+                    sh 'java -version'
+            }
+        }
+
+        stage ('maven version') {
+            steps {
+                    sh 'mvn -version'
+            }
+        }
+
+        stage('Cloning Git') {
+          steps {
+              git "https://github.com/mendelor/java-spring.git"
+            }
+        }
+
+        stage ('build app test') {
+            steps {
+                    sh 'mvn clean install -DskipTests=true '
+            }
+        }
+
+        stage ('docker image build')
+        {
+            steps {
+               script {
+                myapp = docker.build("${Name}:${env.BUILD_ID}")
+
+                }
+            }
+        }
+
+            stage('Run image') {
+              steps {
+                 script {
+                  myapp.run("--name pngimage_build_${env.BUILD_NUMBER} -i -t -p 8081:8081")
+              }
+           }
+        }
+     }
+  }
+
+// mvn compile
+// mvn package
+// java -jar target/gs-maven-0.1.0.jar
+/>  java -jar gs-maven-0.1.0.jar      -  Inside the container
+
+================================================================================
+                 < Exactly like the first template but with Cloudformation >
+
+
+pipeline {
+   agent any
+   environment {
+     PROJECT_ID = '${env.BUILD_ID}'
+     REGION = 'us-east-2'
+     LOCATION = '02222222.dkr.ecr.${REGION}.amazonaws.com'
+     AWS_REPO_NAME = 'hello-world'
+   }
+   stages {
+        stage('Cloning Git') {
+          steps {
+              git "https://github.com/mendelor/phtml.git"
+          }
+        }
+
+        stage('Build image') {
+          steps {
+            script {
+              myapp = docker.build("${LOCATION}/${AWS_REPO_NAME}:${env.BUILD_ID}")
+            }
+          }
+        }
+        stage('Run image') {
+          steps {
+              withAWS(region:'us-east-2',credentials:'demo-ecr-credentials') {
+              sh "aws ecr get-login-password | docker login --username AWS --password-stdin ${LOCATION}/v2/"
+              sh "docker push ${LOCATION}/${AWS_REPO_NAME}:${env.BUILD_ID}"
+          }
+        }
+      }
+
+        stage('Run command') {
+          steps {
+            script {
+              sh "aws cloudformation create-stack --stack-name mystack --template-body file://stack.yml"
+          }
+        }
+      }
+    }
+  }
