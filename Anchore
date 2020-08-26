@@ -1,0 +1,138 @@
+https://medium.com/faun/step-by-step-guide-to-integrate-opensource-container-security-scanner-anchore-engine-with-cicd-580da8db5dfc
+https://medium.com/faun/step-by-step-guide-to-integrate-opensource-container-security-scanner-anchore-engine-with-cicd-580da8db5dfc
+Make sure docker-compose is installed
+
+
+
+
+******* If docker-compose up -d not running it won't gonna work!!!!!!!!!!!!
+The server have to be t2.Medium
+cd ~/aevolume
+docker-compose up -d
+
+
+
+// mkdir -p ~/aevolume/config
+// mkdir -p ~/aevolume/db/
+// cd ~/aevolume/config
+// curl -O https://raw.githubusercontent.com/anchore/anchore-engine/master/scripts/docker-compose/config.yaml
+// cd ~/aevolume
+// curl -O https://raw.githubusercontent.com/anchore/anchore-engine/master/scripts/docker-compose/docker-compose.yaml
+// vim ~/aevolume/config/config.yaml
+// docker-compose up -d      -- make sure there are 2 containers are up and running (two-containers-are-running.jpg)
+Install the jenkins anchore plugin    -- called Anchore Container Image scanner plugin
+Configure the Anchore plugin, Jenkins-> Manage Jenkins -> Configure System     (example shown in Jenkins-configuration-Anchore.jpg)
+Make sure the credentials set in Jenkins (Dokcer-hub-credentials.jpg)
+use jenkins "Pipeline test-pipe" for that job
+
+
+pipeline {
+    agent any
+    stages {
+        stage('build') {
+            steps {
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+                        def image = docker.build('mendelor/docker')
+                        image.push()
+                    }
+                }
+            }
+        }
+        stage('analyze') {
+            steps {
+                sh 'echo "docker.io/mendelor/docker `pwd`/Dockerfile" > anchore_images'
+                anchore name: 'anchore_images'
+            }
+        }
+        stage('teardown') {
+            steps {
+                sh'''
+                    for i in `cat anchore_images | awk '{print $1}'`;do docker rmi $i; done
+                '''
+            }
+        }
+    }
+}
+
+
+pipeline {
+    agent any
+    stages {
+        stage('build') {
+            steps {
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+                        def image = docker.build('mendelor/docker')
+                        image.push()
+                    }
+                }
+            }
+        }
+        stage('analyze') {
+            steps {
+                sh 'echo "docker.io/mendelor/docker `pwd`/Dockerfile" > anchore_images'
+                anchore name: 'anchore_images'
+            }
+        }
+        stage('teardown') {
+            steps {
+                sh'''
+                    for i in `cat anchore_images | awk '{print $1}'`;do docker rmi $i; done
+                '''
+            }
+        }
+    }
+}
+
+
+
+docker-compose.yaml:
+
+version: '2'
+services:
+  anchore-engine:
+    image: docker.io/anchore/anchore-engine:v0.3.4
+    #privileged: true
+    depends_on:
+     - anchore-db
+    ports:
+     - "8228:8228"
+     - "8338:8338"
+    volumes:
+     - ./config:/config/:z
+    logging:
+     driver: "json-file"
+     options:
+      max-size: 100m
+    environment:
+     # NOTE: this should be set to the same name as this service (e.g. anchore-engine)
+     - ANCHORE_HOST_ID=dockerhostid-anchore-engine
+     - ANCHORE_ENDPOINT_HOSTNAME=anchore-engine
+  anchore-db:
+    image: "postgres:9"
+    volumes:
+     - ./db:/var/lib/postgresql/data/pgdata/:z
+    environment:
+      - POSTGRES_PASSWORD=mysecretpassword
+      - PGDATA=/var/lib/postgresql/data/pgdata/
+    logging:
+     driver: "json-file"
+     options:
+      max-size: 100m
+    #uncomment to expose a port to allow direct/external access to the DB, for debugging
+    #ports:
+    # - "2345:5432"
+#### uncomment this section to enable a prometheus service running alongside anchore-engine for metrics gathering/display
+#  anchore-prometheus:
+#    image: docker.io/prom/prometheus:latest
+#    depends_on:
+#     - anchore-engine
+#    volumes:
+#     - ./anchore-prometheus.yaml:/etc/prometheus/prometheus.yml:z
+#    logging:
+#     driver: "json-file"
+#     options:
+#      max-size: 100m
+#    ports:
+#     - "9090:9090"
